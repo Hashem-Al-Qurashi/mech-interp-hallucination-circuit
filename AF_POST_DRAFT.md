@@ -39,6 +39,9 @@ All five pairs show clear known/unknown differentiation. Known entities produce 
 
 The Arabic circuit distinguishes known from unknown entities in all three pairs. Two notable observations: Obama's Arabic representation includes الولايات (United States) at 20.2% — the model has correct Arabic knowledge of Obama. The Eiffel Tower in Arabic predicts دبي (Dubai) at 31.9%, not Paris — the model's Arabic factual knowledge is **wrong but confident**. Both observations become relevant in the intervention experiments below.
 
+![English vs Arabic Predictions](figures/fig2_en_vs_ar.png)
+*Figure 1: Entity recognition confidence — English vs Arabic. Note: Arabic Eiffel Tower predicts Dubai (wrong but confident).*
+
 ## Finding 1: Entity Features Are Sufficient to Induce Hallucination
 
 4,697 transcoder features are unique to the Jordan prompt (not active for Batkin). I boosted these onto the Batkin prompt at varying multipliers using `model.feature_intervention()`:
@@ -66,6 +69,9 @@ The same boost technique applied to Arabic entity circuits reveals that Arabic c
 | **2×** | **5.2%** | **ضد (against)** | **basketball 12.5% (still works)** |
 | 3× | 0.7% | gegen (German!) | — |
 
+![Feature Counts: Known vs Unknown](figures/fig4_feature_counts.png)
+*Figure 3: Unknown entities consistently activate more transcoder features than known entities across all 5 pairs.*
+
 At 1×, Arabic steering works — كرة rises from 18.7% to 28.0%. At 2×, where English circuits are still improving (3.7×), the Arabic circuit breaks. The operating window is narrower.
 
 **Obama (Arabic)** — the circuit actually works, but differently than tracked:
@@ -89,6 +95,9 @@ The tracked token (ا, a morphological fragment) drops — but the model's top-1
 The Eiffel Tower Arabic circuit tolerates 2× boost cleanly — comparable to English. But the steered answer is دبي (Dubai), not Paris. The model's Arabic knowledge is wrong, yet the steering mechanism works on this incorrect knowledge. The entity-recognition circuit operates on **confidence**, not **correctness**.
 
 ## Finding 3: Cross-Lingual Leakage Under Stress
+
+![Cross-Lingual Leakage](figures/fig3_leakage.png)
+*Figure 4: When Arabic circuits break (3-5× boost), tokens from German, Spanish, Polish, Dutch, and Romanian emerge.*
 
 When Arabic circuits are pushed past their operating range (3×+), the output doesn't stay in Arabic. Tokens from other languages emerge:
 
@@ -116,6 +125,9 @@ Across all experiments, 1-2× multipliers produce meaningful steering while 5-10
 
 This has practical implications for any research using `model.feature_intervention()` or activation steering: results at high multipliers are meaningless — they reflect representation destruction, not circuit behavior. The Biology paper's intervention experiments used careful calibration; replication attempts must do the same.
 
+![Ablation Controls](figures/fig5_ablation.png)
+*Figure 5: Ablation controls — Jordan-specific drop ≈ random drop (ratio 1.0×). Large-scale ablation is general disruption.*
+
 ## What Didn't Work (Honest Negatives)
 
 **1. Sledgehammer ablation (4,697 features) fails random control.** Ablating all Jordan-only features drops basketball from 72.8% to 42.3% (30pp). But ablating 4,697 *random* features produces a comparable drop (avg 29.2%, ratio ≈ 1.0×). Large-scale ablation is general disruption from removing many features, not entity-specific circuit disruption.
@@ -123,6 +135,9 @@ This has practical implications for any research using `model.feature_interventi
 **2. Shared entity features aren't the circuit.** 106 transcoder features are active for all three known entities (Jordan, Obama, Einstein) and none of the unknowns. Ablating these 106 produces a 1.8% drop — *less* than ablating 535 random features (7.0% avg, ratio 0.26×). These shared features are load-bearing for general computation, not entity-recognition-specific. The entity circuit appears **distributed** across thousands of entity-specific features rather than concentrated in a sparse shared core.
 
 **3. Unknown entities activate more features.** Across all 5 English pairs (question format), unknown entities consistently activate more features than known entities (e.g., Jordan: 7,047 vs Batkin: 8,522). Batkin also has 2.9M more inhibitory edges (9.7M vs 6.8M) and a higher max edge weight (107.4 vs 56.7). This is consistent with the Biology paper's finding that the default state involves more active circuitry, but I report this as a Level 2 observation — no causal intervention was performed to test it.
+
+![Biology Paper Comparison](figures/fig6_comparison.png)
+*Figure 6: Direct comparison with Anthropic's Biology paper findings on Claude 3.5 Haiku.*
 
 ## Implications
 
