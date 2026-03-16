@@ -1,0 +1,9 @@
+.ipynb_checkpoints/
+graphs/
+__pycache__/
+*.pkl
+claude_colab_integration.py
+claude_integration_examples.ipynb
+CLAUDE.md
+hallucination_circuit.ipynb
+hallucination_experiment.py
