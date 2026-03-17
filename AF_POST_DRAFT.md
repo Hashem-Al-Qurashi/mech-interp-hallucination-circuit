@@ -6,7 +6,9 @@ Entity-recognition features in Gemma 2 2B are sufficient to induce hallucination
 
 ## Background
 
-Anthropic's [Biology of a Large Language Model](https://transformer-circuits.pub/2025/attribution-graphs/biology.html) identified a hallucination inhibition circuit in Claude 3.5 Haiku where "known entity" features suppress a default refusal response. Ferrando et al. ([Do I Know This Entity?](https://arxiv.org/abs/2411.14257), ICLR 2025 Oral) found corresponding SAE latents in Gemma 2 2B with causal interventions — tested only in English. Behavioral research shows non-English prompts bypass model safety at alarming rates — [79% for GPT-4](https://arxiv.org/html/2310.06474v3), with [Arabic transliteration increasing unsafe responses in Claude 3 Sonnet](https://arxiv.org/html/2406.18725v1). The [Refusal Direction is Universal Across Languages](https://arxiv.org/abs/2505.17306) paper (NeurIPS 2025) showed refusal directions are parallel across languages but non-English content representations are less clearly separated. The mechanistic explanation for cross-lingual safety gaps at the circuit level has been open. I used [circuit-tracer](https://github.com/safety-research/circuit-tracer) with GemmaScope transcoders to test whether entity-recognition circuits operate comparably in English and Arabic.
+Anthropic's [Biology of a Large Language Model](https://transformer-circuits.pub/2025/attribution-graphs/biology.html) identified a hallucination inhibition circuit in Claude 3.5 Haiku where "known entity" features suppress a default refusal response. Ferrando et al. ([Do I Know This Entity?](https://arxiv.org/abs/2411.14257), ICLR 2025 Oral) found corresponding SAE latents in Gemma 2 2B with causal interventions — tested only in English. They found entity recognition peaking at layer 9 using SAEs. Our transcoder-based analysis finds shared entity features distributed across layers 4-10, with peak density at layer 10 (17 features for all-3 intersection) and layer 6 (60 features for 2-of-3 set). The broader distribution may reflect transcoders capturing more distributed representations than SAEs.
+
+Behavioral research shows non-English prompts bypass model safety at alarming rates — [79% for GPT-4](https://arxiv.org/html/2310.06474v3), with [Arabic transliteration increasing unsafe responses in Claude 3 Sonnet](https://arxiv.org/html/2406.18725v1). The [Refusal Direction is Universal Across Languages](https://arxiv.org/abs/2505.17306) paper (NeurIPS 2025) showed refusal directions are parallel across languages but non-English content representations are less clearly separated. The mechanistic explanation for cross-lingual safety gaps at the circuit level has been open. I used [circuit-tracer](https://github.com/safety-research/circuit-tracer) with GemmaScope transcoders to test whether entity-recognition circuits operate comparably in English and Arabic.
 
 ## Setup
 
@@ -16,6 +18,19 @@ Anthropic's [Biology of a Large Language Model](https://transformer-circuits.pub
 - **Prompt format:** Completion style — "Michael Jordan plays the sport of" (matches [circuit-tracer Gemma demo](https://github.com/safety-research/circuit-tracer/blob/main/demos/gemma_demo.ipynb) and Ferrando et al.'s methodology; base models predict newlines after `?`, obscuring the signal)
 - **Column order verified:** `active_features` tensor is `[layer, pos, feature_idx]` — Column 0 max=25 (26 layers), Column 1 max=6 (tokens), Column 2 max=16,382 (transcoder dictionary)
 - **Code:** [github.com/Hashem-Al-Qurashi/mech-interp-hallucination-circuit](https://github.com/Hashem-Al-Qurashi/mech-interp-hallucination-circuit)
+
+### Attribution Graphs on Neuronpedia
+
+I generated attribution graphs for both prompts on [Neuronpedia's Circuit Tracer](https://www.neuronpedia.org/gemma-2-2b/graph). These are interactive — click through to explore the full circuit:
+
+- **Jordan (known):** [Interactive graph — 1,305 nodes, 54,984 links](https://www.neuronpedia.org/gemma-2-2b/graph?slug=michaeljordanpla-1773757470825)
+- **Batkin (unknown):** [Interactive graph](https://www.neuronpedia.org/gemma-2-2b/graph?slug=michaelbatkinpla-1773757866608)
+
+![Jordan Attribution Graph on Neuronpedia](figures/fig7_neuronpedia_jordan.png)
+*Figure 1: Attribution graph for "Michael Jordan plays the sport of" on Neuronpedia. Layers L0-L25 vertically, token positions horizontally. Nodes represent transcoder features, edges show information flow. [Explore interactively →](https://www.neuronpedia.org/gemma-2-2b/graph?slug=michaeljordanpla-1773757470825)*
+
+![Batkin Attribution Graph on Neuronpedia](figures/fig8_neuronpedia_batkin.png)
+*Figure 2: Attribution graph for "Michael Batkin plays the sport of" (fictional entity). Compare the density and distribution of features to Jordan above. [Explore interactively →](https://www.neuronpedia.org/gemma-2-2b/graph?slug=michaelbatkinpla-1773757866608)*
 
 ### English Prompt Pairs (completion format)
 
@@ -27,7 +42,7 @@ Anthropic's [Biology of a Large Language Model](https://transformer-circuits.pub
 | The Eiffel Tower is located in | **Paris** (47.1%) | The Glorpnax Tower is located in | the (70.9%) |
 | Lionel Messi plays for the team | of (20.1%), **Barcelona** at #4 | Darko Plivnic plays for the team | of (38.9%) |
 
-All five pairs show clear known/unknown differentiation. Known entities produce confident, correct predictions. Unknown entities produce scattered generic tokens. The pattern is consistent across people, places, and knowledge domains.
+All five pairs show clear known/unknown differentiation. Known entities produce confident, correct predictions. Unknown entities produce scattered generic tokens.
 
 ### Arabic Prompt Pairs
 
@@ -37,10 +52,13 @@ All five pairs show clear known/unknown differentiation. Known entities produce 
 | باراك أوباما كان رئيس | ا (21.8%), **الولايات** (20.2%) | زاركون هيلمفيست كان رئيس | ا (31.7%) |
 | برج إيفل يقع في مدينة | **دبي** (Dubai) (31.9%) | برج غلوربناكس يقع في مدينة | غ (8.8%) |
 
-The Arabic circuit distinguishes known from unknown entities in all three pairs. Two notable observations: Obama's Arabic representation includes الولايات (United States) at 20.2% — the model has correct Arabic knowledge of Obama. The Eiffel Tower in Arabic predicts دبي (Dubai) at 31.9%, not Paris — the model's Arabic factual knowledge is **wrong but confident**. Both observations become relevant in the intervention experiments below.
+The Arabic circuit distinguishes known from unknown entities in all three pairs. Obama's Arabic representation includes الولايات (United States) at 20.2% — correct knowledge. The Eiffel Tower predicts دبي (Dubai) at 31.9%, not Paris — **wrong but confident**.
 
 ![English vs Arabic Predictions](figures/fig2_en_vs_ar.png)
-*Figure 1: Entity recognition confidence — English vs Arabic. Note: Arabic Eiffel Tower predicts Dubai (wrong but confident).*
+*Figure 3: Entity recognition confidence — English vs Arabic. Arabic Eiffel Tower predicts Dubai (wrong but confident).*
+
+![Feature Counts: Known vs Unknown](figures/fig4_feature_counts.png)
+*Figure 4: Unknown entities consistently activate more transcoder features than known entities across all 5 pairs.*
 
 ## Finding 1: Entity Features Are Sufficient to Induce Hallucination
 
@@ -53,6 +71,9 @@ The Arabic circuit distinguishes known from unknown entities in all three pairs.
 | **2×** | **12.5%** | **basketball (#1)** | **3.7× increase** |
 | 5× | 1.6% | course (28.3%) | destroyed |
 | 10× | 0.6% | course (23.3%) | destroyed |
+
+![Dose-Response: English vs Arabic](figures/fig1_dose_response.png)
+*Figure 5: Dose-response curves for English and Arabic entity feature steering. English peaks at 2×; Arabic peaks at 1× and breaks at 2×. Shaded region marks representation destruction.*
 
 At 2× activation, basketball becomes the top prediction for a fictional person the model has never encountered. The entity-recognition features are sufficient to induce hallucination at calibrated strength. At 5×+, the representation space collapses — the difference between meaningful steering and noise is a single multiplier step.
 
@@ -69,9 +90,6 @@ The same boost technique applied to Arabic entity circuits reveals that Arabic c
 | **2×** | **5.2%** | **ضد (against)** | **basketball 12.5% (still works)** |
 | 3× | 0.7% | gegen (German!) | — |
 
-![Feature Counts: Known vs Unknown](figures/fig4_feature_counts.png)
-*Figure 3: Unknown entities consistently activate more transcoder features than known entities across all 5 pairs.*
-
 At 1×, Arabic steering works — كرة rises from 18.7% to 28.0%. At 2×, where English circuits are still improving (3.7×), the Arabic circuit breaks. The operating window is narrower.
 
 **Obama (Arabic)** — the circuit actually works, but differently than tracked:
@@ -82,7 +100,7 @@ At 1×, Arabic steering works — كرة rises from 18.7% to 28.0%. At 2×, wher
 | **1×** | 2.9% | **الولايات (United States)** | **Circuit steered to correct answer** |
 | **2×** | 0.2% | **الوزراء (ministers)** | **Still entity-relevant** |
 
-The tracked token (ا, a morphological fragment) drops — but the model's top-1 prediction shifts to الولايات (the United States), which is the *correct answer* for "Obama was the president of." At 2×, it shifts to الوزراء (ministers) — still semantically relevant to Obama's role. The circuit is steering toward entity-appropriate content. This is a **positive result**, not a failure.
+The tracked token (ا, a morphological fragment) drops — but the model's top-1 prediction shifts to الولايات (the United States), the *correct answer* for "Obama was the president of." At 2×, it shifts to الوزراء (ministers) — still semantically relevant to Obama's role. The circuit is steering toward entity-appropriate content. This is a **positive result**, not a failure.
 
 **Eiffel Tower (Arabic)** — robust steering of wrong knowledge:
 
@@ -96,10 +114,10 @@ The Eiffel Tower Arabic circuit tolerates 2× boost cleanly — comparable to En
 
 ## Finding 3: Cross-Lingual Leakage Under Stress
 
-![Cross-Lingual Leakage](figures/fig3_leakage.png)
-*Figure 4: When Arabic circuits break (3-5× boost), tokens from German, Spanish, Polish, Dutch, and Romanian emerge.*
-
 When Arabic circuits are pushed past their operating range (3×+), the output doesn't stay in Arabic. Tokens from other languages emerge:
+
+![Cross-Lingual Leakage](figures/fig3_leakage.png)
+*Figure 6: When Arabic circuits break (3-5× boost), tokens from German, Spanish, Polish, Dutch, and Romanian emerge. At 3× (yellow), Arabic tokens still dominate. At 5× (purple), non-Arabic leakage dominates.*
 
 | Arabic 3× boost output | Arabic 5× boost output |
 |---|---|
@@ -123,21 +141,33 @@ Across all experiments, 1-2× multipliers produce meaningful steering while 5-10
 | Arabic (Jordan) | 1× | 2× | 3×+ |
 | Arabic (Eiffel) | 1-2× | — | — |
 
-This has practical implications for any research using `model.feature_intervention()` or activation steering: results at high multipliers are meaningless — they reflect representation destruction, not circuit behavior. The Biology paper's intervention experiments used careful calibration; replication attempts must do the same.
-
-![Ablation Controls](figures/fig5_ablation.png)
-*Figure 5: Ablation controls — Jordan-specific drop ≈ random drop (ratio 1.0×). Large-scale ablation is general disruption.*
+This has practical implications for any research using `model.feature_intervention()` or activation steering: results at high multipliers are meaningless — they reflect representation destruction, not circuit behavior.
 
 ## What Didn't Work (Honest Negatives)
+
+![Ablation Controls](figures/fig5_ablation.png)
+*Figure 7: Ablation controls — Jordan-specific drop ≈ random drop (ratio 1.0×). Large-scale ablation is general disruption.*
 
 **1. Sledgehammer ablation (4,697 features) fails random control.** Ablating all Jordan-only features drops basketball from 72.8% to 42.3% (30pp). But ablating 4,697 *random* features produces a comparable drop (avg 29.2%, ratio ≈ 1.0×). Large-scale ablation is general disruption from removing many features, not entity-specific circuit disruption.
 
 **2. Shared entity features aren't the circuit.** 106 transcoder features are active for all three known entities (Jordan, Obama, Einstein) and none of the unknowns. Ablating these 106 produces a 1.8% drop — *less* than ablating 535 random features (7.0% avg, ratio 0.26×). These shared features are load-bearing for general computation, not entity-recognition-specific. The entity circuit appears **distributed** across thousands of entity-specific features rather than concentrated in a sparse shared core.
 
-**3. Unknown entities activate more features.** Across all 5 English pairs (question format), unknown entities consistently activate more features than known entities (e.g., Jordan: 7,047 vs Batkin: 8,522). Batkin also has 2.9M more inhibitory edges (9.7M vs 6.8M) and a higher max edge weight (107.4 vs 56.7). This is consistent with the Biology paper's finding that the default state involves more active circuitry, but I report this as a Level 2 observation — no causal intervention was performed to test it.
+**3. Unknown entities activate more features.** Across all 5 English pairs (completion format), unknown entities consistently activate more features than known entities (e.g., Jordan: 5,804 vs Batkin: 7,035). Batkin also has 2.9M more inhibitory edges (9.7M vs 6.8M) and a higher max edge weight (107.4 vs 56.7). This is consistent with the Biology paper's finding that the default state involves more active circuitry, but I report this as a Level 2 observation — no causal intervention was performed to test it.
+
+## Comparison with Prior Work
 
 ![Biology Paper Comparison](figures/fig6_comparison.png)
-*Figure 6: Direct comparison with Anthropic's Biology paper findings on Claude 3.5 Haiku.*
+*Figure 8: Direct comparison with Anthropic's Biology paper findings on Claude 3.5 Haiku.*
+
+| Biology Paper (Claude 3.5 Haiku) | Our Results (Gemma 2 2B base) | Agreement |
+|---|---|---|
+| Default = refusal | No refusal default (base model) | ✗ Different |
+| Known-entity features inhibit refusal | Entity features induce hallucination (boost works) | ~ Consistent |
+| Sparse identifiable circuit | Distributed circuit (random control ≈ 1.0×) | ✗ Different |
+| English only | English + Arabic + cross-lingual leakage | + Extended |
+| Careful calibration | 1-2× steers, 5-10× destroys | ✓ Confirmed |
+
+Ferrando et al. (ICLR 2025) found entity recognition peaking at layer 9 using SAEs on the same model. Our transcoder-based analysis finds 106 shared entity features distributed across layers 0-25, with concentration in layers 4-10 (layer 10: 17 features, layer 6: 8 features for all-3 intersection; layer 6: 60 features, layer 10: 56 features for 2-of-3 set). The broader distribution may reflect transcoders capturing more distributed representations than SAEs, or the difference between per-layer and cross-layer decomposition.
 
 ## Implications
 
@@ -165,5 +195,6 @@ Open questions:
 
 - **Code:** [github.com/Hashem-Al-Qurashi/mech-interp-hallucination-circuit](https://github.com/Hashem-Al-Qurashi/mech-interp-hallucination-circuit)
 - **Notebook:** `circuit_tracer_setup.ipynb` — 33 cells across 5 experimental phases, all outputs saved
+- **Interactive graphs:** [Jordan on Neuronpedia](https://www.neuronpedia.org/gemma-2-2b/graph?slug=michaeljordanpla-1773757470825) | [Batkin on Neuronpedia](https://www.neuronpedia.org/gemma-2-2b/graph?slug=michaelbatkinpla-1773757866608)
 - **Runtime:** ~3-4 hours on A100 for all phases
 - **Requirements:** Colab Pro (A100), HuggingFace token for Gemma 2 2B gated access
